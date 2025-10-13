@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, type FC } from 'react';
 import type { NextPage } from 'next';
 import Head from 'next/head';
-import { Play, Pause, Square, Volume2, Languages, Zap, ChevronsRight, LoaderCircle, Download } from 'lucide-react';
+import { Play, Pause, Square, Volume2, Languages, Zap, ChevronsRight, LoaderCircle } from 'lucide-react';
 
 // This helper component is fine
 const ControlSlider: FC<{ id: string; label: string; value: number; min: number; max: number; step: number; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; icon: React.ReactNode; }> = ({ id, label, value, min, max, step, onChange, icon }) => (
@@ -24,10 +24,6 @@ const StoryTextToSpeechPage: NextPage = () => {
     const [rate, setRate] = useState<number>(1);
     const [pitch, setPitch] = useState<number>(1);
     const [isSpeechReady, setIsSpeechReady] = useState<boolean>(false);
-    const [isDownloading, setIsDownloading] = useState<boolean>(false);
-
-    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-    const audioChunksRef = useRef<Blob[]>([]);
 
     useEffect(() => {
         const populateVoiceList = () => {
@@ -37,86 +33,40 @@ const StoryTextToSpeechPage: NextPage = () => {
             const hindiVoice = availableVoices.find(v => v.lang === 'hi-IN');
             const indianEnglishVoice = availableVoices.find(v => v.lang === 'en-IN');
             setSelectedVoice(prev => prev || hindiVoice || indianEnglishVoice || availableVoices[0]);
-            setIsSpeechReady(true);
+            setIsSpeechReady(true); 
         };
         window.speechSynthesis.onvoiceschanged = populateVoiceList;
         populateVoiceList();
         return () => { window.speechSynthesis.onvoiceschanged = null; };
     }, []);
 
-    const speakOrRecord = (record = false) => {
-        if (!isSpeechReady || !selectedVoice) { alert("Speech synthesis is not ready yet."); return; }
-        if (text.trim() === '') return;
-        
+    const handleSpeak = () => {
+        if (!isSpeechReady || !selectedVoice) return;
+        if (isPaused) {
+            window.speechSynthesis.resume();
+            setIsPaused(false);
+            setIsSpeaking(true);
+            return;
+        }
         window.speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.voice = selectedVoice;
         utterance.rate = rate;
         utterance.pitch = pitch;
-
-        if (record) {
-            // This is a complex workaround to record browser speech synthesis.
-            // It creates a temporary audio context to capture the output.
-            setIsDownloading(true);
-            const audioContext = new AudioContext();
-            const destination = audioContext.createMediaStreamDestination();
-            const utteranceSource = audioContext.createConstantSource(); // Dummy source
-            utteranceSource.start();
-
-            // Connect the synth output to our destination
-            const synth = window.speechSynthesis;
-            const source = new MediaStreamAudioSourceNode(audioContext, { mediaStream: destination.stream });
-
-            const mediaRecorder = new MediaRecorder(destination.stream);
-            mediaRecorderRef.current = mediaRecorder;
-            audioChunksRef.current = [];
-            
-            mediaRecorder.ondataavailable = event => audioChunksRef.current.push(event.data);
-            
-            mediaRecorder.onstop = () => {
-                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/mp3' });
-                const audioUrl = URL.createObjectURL(audioBlob);
-                const a = document.createElement('a');
-                a.style.display = 'none';
-                a.href = audioUrl;
-                a.download = 'story_audio.mp3';
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(audioUrl);
-                a.remove();
-                setIsDownloading(false);
-                audioContext.close();
-            };
-
-            utterance.onend = () => {
-                // A short delay to ensure the last bit of audio is captured
-                setTimeout(() => mediaRecorderRef.current?.stop(), 500);
-            };
-
-            mediaRecorder.start();
-            synth.speak(utterance);
-
-        } else {
-            // Normal speaking
-            utterance.onstart = () => { setIsSpeaking(true); setIsPaused(false); };
-            utterance.onend = () => { setIsSpeaking(false); setIsPaused(false); };
-            utterance.onerror = (event) => { console.error('SpeechSynthesisUtterance.onerror', event); setIsSpeaking(false); setIsPaused(false); };
-            window.speechSynthesis.speak(utterance);
-        }
+        utterance.onstart = () => { setIsSpeaking(true); setIsPaused(false); };
+        utterance.onend = () => { setIsSpeaking(false); setIsPaused(false); };
+        utterance.onerror = (event) => { console.error('SpeechSynthesisUtterance.onerror', event); setIsSpeaking(false); setIsPaused(false); };
+        window.speechSynthesis.speak(utterance);
     };
 
-    const handleSpeak = () => {
-      if (isPaused) { window.speechSynthesis.resume(); setIsPaused(false); setIsSpeaking(true); } else { speakOrRecord(false); }
-    };
     const handlePause = () => { window.speechSynthesis.pause(); setIsPaused(true); setIsSpeaking(false); };
     const handleStop = () => { window.speechSynthesis.cancel(); setIsSpeaking(false); setIsPaused(false); };
-    const handleDownload = () => speakOrRecord(true);
 
     return (
         <>
             <Head>
                 <title>Story Text-to-Speech | Pro Layout</title>
-                <meta name="description" content="A professional text-to-speech tool with MP3 download." />
+                <meta name="description" content="A professional text-to-speech tool." />
                 <link rel="icon" href="/favicon.ico" />
                 <link rel="preconnect" href="https://fonts.googleapis.com" />
                 <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
@@ -126,7 +76,6 @@ const StoryTextToSpeechPage: NextPage = () => {
             <div className="min-h-screen bg-slate-50 font-sans flex flex-col">
                 <main className="flex-grow flex items-center justify-center p-4">
                     <div className="w-full max-w-4xl mx-auto bg-white rounded-2xl shadow-lg border border-slate-200 p-6 md:p-8">
-                        {/* Header Section */}
                         <div className="flex items-center gap-4 mb-6">
                             <div className="bg-blue-100 text-blue-600 p-3 rounded-xl">
                                 <Volume2 size={24} />
@@ -136,11 +85,7 @@ const StoryTextToSpeechPage: NextPage = () => {
                                 <p className="text-slate-500">Bring your Hindi & English stories to life.</p>
                             </div>
                         </div>
-
-                        {/* NEW - Main Two-Column Layout */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                            
-                            {/* Left Column: Text Area */}
                             <div className="space-y-2">
                                 <label htmlFor="story-text" className="text-sm font-medium text-slate-700">Your Story</label>
                                 <textarea
@@ -151,8 +96,6 @@ const StoryTextToSpeechPage: NextPage = () => {
                                     className="w-full h-[350px] p-4 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 transition-shadow duration-200 resize-none text-slate-700 leading-relaxed bg-white"
                                 />
                             </div>
-
-                            {/* Right Column: Controls */}
                             <div className="space-y-6 flex flex-col">
                                 <div className="space-y-6">
                                     <div>
@@ -166,8 +109,6 @@ const StoryTextToSpeechPage: NextPage = () => {
                                         <ControlSlider id="pitch" label="Pitch" value={pitch} min={0} max={2} step={0.1} onChange={(e) => setPitch(parseFloat(e.target.value))} icon={<Zap size={16} />} />
                                     </div>
                                 </div>
-                                
-                                {/* NEW - Button Layout at the bottom */}
                                 <div className="pt-6 border-t border-slate-200 mt-auto">
                                     {!isSpeechReady && (
                                         <div className="flex items-center justify-center gap-2 p-3 text-slate-500">
@@ -176,19 +117,15 @@ const StoryTextToSpeechPage: NextPage = () => {
                                     )}
                                     <div className={`space-y-3 ${!isSpeechReady ? 'opacity-50 cursor-not-allowed' : ''}`}>
                                         <div className="flex items-center gap-3">
-                                            <button onClick={handleSpeak} disabled={!isSpeechReady || isSpeaking || isDownloading} className="flex-grow flex items-center justify-center gap-2 p-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 disabled:bg-blue-300 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none">
+                                            <button onClick={handleSpeak} disabled={!isSpeechReady || isSpeaking} className="flex-grow flex items-center justify-center gap-2 p-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 disabled:bg-blue-300 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none">
                                                 {isPaused ? <><Play size={18} /> Resume</> : <><Play size={18} /> Speak</>}
                                             </button>
-                                            <button onClick={handlePause} disabled={!isSpeechReady || !isSpeaking || isPaused || isDownloading} className="flex-shrink-0 flex items-center justify-center h-[48px] w-[48px] bg-slate-200 text-slate-700 font-semibold rounded-xl hover:bg-slate-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none">
+                                            <button onClick={handlePause} disabled={!isSpeechReady || !isSpeaking || isPaused} className="flex-shrink-0 flex items-center justify-center h-[48px] w-[48px] bg-slate-200 text-slate-700 font-semibold rounded-xl hover:bg-slate-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none">
                                                 <Pause size={18} />
                                             </button>
                                         </div>
-                                        <button onClick={handleStop} disabled={!isSpeechReady || (!isSpeaking && !isPaused) || isDownloading} className="w-full flex items-center justify-center gap-2 p-3 bg-red-600 text-white font-semibold rounded-xl hover:bg-red-700 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 disabled:bg-red-300 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none">
+                                        <button onClick={handleStop} disabled={!isSpeechReady || (!isSpeaking && !isPaused)} className="w-full flex items-center justify-center gap-2 p-3 bg-red-600 text-white font-semibold rounded-xl hover:bg-red-700 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 disabled:bg-red-300 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none">
                                             <Square size={18} /> Stop
-                                        </button>
-                                        <button onClick={handleDownload} disabled={!isSpeechReady || isSpeaking || isDownloading} className="w-full flex items-center justify-center gap-2 p-3 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 disabled:bg-emerald-300 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none">
-                                            {isDownloading ? <LoaderCircle className="animate-spin" size={18}/> : <Download size={18} />}
-                                            {isDownloading ? 'Recording...' : 'Download MP3'}
                                         </button>
                                     </div>
                                 </div>
