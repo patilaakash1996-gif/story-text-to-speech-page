@@ -3,7 +3,6 @@ import type { NextPage } from 'next';
 import Head from 'next/head';
 import { Play, Pause, Square, Volume2, Languages, Zap, ChevronsRight, LoaderCircle } from 'lucide-react';
 
-// This helper component is fine
 const ControlSlider: FC<{ id: string; label: string; value: number; min: number; max: number; step: number; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; icon: React.ReactNode; }> = ({ id, label, value, min, max, step, onChange, icon }) => (
     <div className="space-y-2">
         <label htmlFor={id} className="flex items-center gap-2 text-sm font-medium text-slate-600">
@@ -15,7 +14,6 @@ const ControlSlider: FC<{ id: string; label: string; value: number; min: number;
 
 const StoryTextToSpeechPage: NextPage = () => {
     const initialStory = `Story ka Perfect Ending aur Next Episode ka Connection\n\nThe End of Episode 1:\n\nFranklin un badmashon se bachkar nikal jaata hai aur us awesome supercar ko apne safe garage mein le aata hai. Woh bohot khush hai aur apni jeet ka jashn mana raha hai. Woh gaadi ke paas khada hokar uski beauty ko admire kar raha hota hai.`;
-
     const [text, setText] = useState<string>(initialStory);
     const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
     const [isPaused, setIsPaused] = useState<boolean>(false);
@@ -23,46 +21,26 @@ const StoryTextToSpeechPage: NextPage = () => {
     const [selectedVoice, setSelectedVoice] = useState<SpeechSynthesisVoice | null>(null);
     const [rate, setRate] = useState<number>(1);
     const [pitch, setPitch] = useState<number>(1);
-    
-    // THE GUARANTEED FIX: A state to track when the speech engine is fully ready.
     const [isSpeechReady, setIsSpeechReady] = useState<boolean>(false);
 
     useEffect(() => {
         const populateVoiceList = () => {
             const availableVoices = window.speechSynthesis.getVoices();
-            if (availableVoices.length === 0) {
-                return; // The "menu" is not ready. We wait.
-            }
-            
+            if (availableVoices.length === 0) return;
             setVoices(availableVoices);
-
-            // Set a default voice only if one hasn't been chosen yet.
-            if (!selectedVoice) {
-                const hindiVoice = availableVoices.find(v => v.lang === 'hi-IN');
-                const indianEnglishVoice = availableVoices.find(v => v.lang === 'en-IN');
-                setSelectedVoice(hindiVoice || indianEnglishVoice || availableVoices[0]);
-            }
-            
-            // THE KEY: The "bell" has rung. The menu is ready. Announce it to the app.
+            const hindiVoice = availableVoices.find(v => v.lang === 'hi-IN');
+            const indianEnglishVoice = availableVoices.find(v => v.lang === 'en-IN');
+            setSelectedVoice(prev => prev || hindiVoice || indianEnglishVoice || availableVoices[0]);
             setIsSpeechReady(true); 
         };
-
-        // Listen for the "bell" (the onvoiceschanged event)
         window.speechSynthesis.onvoiceschanged = populateVoiceList;
-        // Make an initial attempt in case the voices are already loaded
         populateVoiceList();
-        
         return () => { window.speechSynthesis.onvoiceschanged = null; };
-    }, []); // This effect only runs once to set up the listener.
+    }, []);
 
     const handleSpeak = () => {
-        if (!isSpeechReady || !selectedVoice) return; // Defensive check
-        if (isPaused) {
-            window.speechSynthesis.resume();
-            setIsPaused(false);
-            setIsSpeaking(true);
-            return;
-        }
+        if (!isSpeechReady || !selectedVoice) return;
+        if (isPaused) { window.speechSynthesis.resume(); setIsPaused(false); setIsSpeaking(true); return; }
         window.speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.voice = selectedVoice;
@@ -87,14 +65,11 @@ const StoryTextToSpeechPage: NextPage = () => {
                 <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
                 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet" />
             </Head>
-            
             <div className="min-h-screen bg-slate-50 font-sans flex flex-col">
                 <main className="flex-grow flex items-center justify-center p-4">
                     <div className="w-full max-w-4xl mx-auto bg-white rounded-2xl shadow-lg border border-slate-200 p-6 md:p-8">
                         <div className="flex items-center gap-4 mb-6">
-                            <div className="bg-blue-100 text-blue-600 p-3 rounded-xl">
-                                <Volume2 size={24} />
-                            </div>
+                            <div className="bg-blue-100 text-blue-600 p-3 rounded-xl"><Volume2 size={24} /></div>
                             <div>
                                 <h1 className="text-2xl font-bold text-slate-800">Story Text-to-Speech</h1>
                                 <p className="text-slate-500">Bring your Hindi & English stories to life.</p>
@@ -103,13 +78,7 @@ const StoryTextToSpeechPage: NextPage = () => {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                             <div className="space-y-2">
                                 <label htmlFor="story-text" className="text-sm font-medium text-slate-700">Your Story</label>
-                                <textarea
-                                    id="story-text"
-                                    value={text}
-                                    onChange={(e) => setText(e.target.value)}
-                                    placeholder="Enter your story here..."
-                                    className="w-full h-[350px] p-4 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 transition-shadow duration-200 resize-none text-slate-700 leading-relaxed bg-white"
-                                />
+                                <textarea id="story-text" value={text} onChange={(e) => setText(e.target.value)} placeholder="Enter your story here..." className="w-full h-[350px] p-4 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 transition-shadow duration-200 resize-none text-slate-700 leading-relaxed bg-white" />
                             </div>
                             <div className="space-y-6 flex flex-col">
                                 <div className="space-y-6">
@@ -125,13 +94,7 @@ const StoryTextToSpeechPage: NextPage = () => {
                                     </div>
                                 </div>
                                 <div className="pt-6 border-t border-slate-200 mt-auto">
-                                    {/* THE GUARANTEED FIX: Show a loading message until the engine is ready. */}
-                                    {!isSpeechReady && (
-                                        <div className="flex items-center justify-center gap-2 p-3 text-slate-500">
-                                            <LoaderCircle className="animate-spin" size={18} /> <span>Initializing Audio...</span>
-                                        </div>
-                                    )}
-                                    {/* THE GUARANTEED FIX: The buttons are disabled until isSpeechReady is true. */}
+                                    {!isSpeechReady && (<div className="flex items-center justify-center gap-2 p-3 text-slate-500"><LoaderCircle className="animate-spin" size={18} /> <span>Initializing Audio...</span></div>)}
                                     <div className={`space-y-3 ${!isSpeechReady ? 'opacity-50 cursor-not-allowed' : ''}`}>
                                         <div className="flex items-center gap-3">
                                             <button onClick={handleSpeak} disabled={!isSpeechReady || isSpeaking} className="flex-grow flex items-center justify-center gap-2 p-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 disabled:bg-blue-300 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none">
