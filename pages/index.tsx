@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, type FC } from 'react';
 import type { NextPage } from 'next';
 import Head from 'next/head';
-import { Play, Pause, Square, Volume2, Languages, Zap, ChevronsRight, LoaderCircle } from 'lucide-react';
+import { Play, Pause, Square, Volume2, Languages, Zap, ChevronsRight, LoaderCircle, BookOpen } from 'lucide-react';
 
 // This helper component is fine
 const ControlSlider: FC<{ id: string; label: string; value: number; min: number; max: number; step: number; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; icon: React.ReactNode; }> = ({ id, label, value, min, max, step, onChange, icon }) => (
@@ -24,6 +24,9 @@ const StoryTextToSpeechPage: NextPage = () => {
     const [rate, setRate] = useState<number>(1);
     const [pitch, setPitch] = useState<number>(1);
     const [isSpeechReady, setIsSpeechReady] = useState<boolean>(false);
+    
+    // THE UPGRADE: State for highlighting
+    const [currentWordRange, setCurrentWordRange] = useState<{ start: number, end: number }>({ start: 0, end: 0 });
 
     useEffect(() => {
         const populateVoiceList = () => {
@@ -53,20 +56,62 @@ const StoryTextToSpeechPage: NextPage = () => {
         utterance.voice = selectedVoice;
         utterance.rate = rate;
         utterance.pitch = pitch;
+
+        // THE UPGRADE: Listen for word boundaries
+        utterance.onboundary = (event) => {
+            if (event.name === 'word') {
+                setCurrentWordRange({ start: event.charIndex, end: event.charIndex + event.charLength });
+            }
+        };
+
         utterance.onstart = () => { setIsSpeaking(true); setIsPaused(false); };
-        utterance.onend = () => { setIsSpeaking(false); setIsPaused(false); };
-        utterance.onerror = (event) => { console.error('SpeechSynthesisUtterance.onerror', event); setIsSpeaking(false); setIsPaused(false); };
+        utterance.onend = () => {
+            setIsSpeaking(false);
+            setIsPaused(false);
+            // THE UPGRADE: Reset highlighting on end
+            setCurrentWordRange({ start: 0, end: 0 });
+        };
+        utterance.onerror = (event) => {
+            console.error('SpeechSynthesisUtterance.onerror', event);
+            setIsSpeaking(false);
+            setIsPaused(false);
+            setCurrentWordRange({ start: 0, end: 0 });
+        };
         window.speechSynthesis.speak(utterance);
     };
 
     const handlePause = () => { window.speechSynthesis.pause(); setIsPaused(true); setIsSpeaking(false); };
-    const handleStop = () => { window.speechSynthesis.cancel(); setIsSpeaking(false); setIsPaused(false); };
+    const handleStop = () => {
+        window.speechSynthesis.cancel();
+        setIsSpeaking(false);
+        setIsPaused(false);
+        // THE UPGRADE: Reset highlighting on stop
+        setCurrentWordRange({ start: 0, end: 0 });
+    };
+
+    // THE UPGRADE: Helper function to render the highlighted text
+    const renderHighlightedText = () => {
+        const { start, end } = currentWordRange;
+        // Only show highlighting if we are actively speaking
+        if (!isSpeaking || (start === 0 && end === 0)) {
+            return text;
+        }
+        return (
+            <>
+                {text.substring(0, start)}
+                <span className="bg-yellow-200 rounded">
+                    {text.substring(start, end)}
+                </span>
+                {text.substring(end)}
+            </>
+        );
+    };
 
     return (
         <>
             <Head>
-                <title>Story Text-to-Speech | Pro Layout</title>
-                <meta name="description" content="A professional text-to-speech tool." />
+                <title>Story TTS with Highlighting</title>
+                <meta name="description" content="A professional text-to-speech tool with real-time highlighting." />
                 <link rel="icon" href="/favicon.ico" />
                 <link rel="preconnect" href="https://fonts.googleapis.com" />
                 <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
@@ -86,16 +131,15 @@ const StoryTextToSpeechPage: NextPage = () => {
                             </div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            {/* THE UPGRADE: The left column is now the highlighting "Reading View" */}
                             <div className="space-y-2">
-                                <label htmlFor="story-text" className="text-sm font-medium text-slate-700">Your Story</label>
-                                <textarea
-                                    id="story-text"
-                                    value={text}
-                                    onChange={(e) => setText(e.target.value)}
-                                    placeholder="Enter your story here..."
-                                    className="w-full h-[350px] p-4 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 transition-shadow duration-200 resize-none text-slate-700 leading-relaxed bg-white"
-                                />
+                                <label className="text-sm font-medium text-slate-700 flex items-center gap-2"><BookOpen size={16} /> Reading View</label>
+                                <div className="w-full h-[350px] p-4 border border-slate-300 rounded-xl bg-gray-50 overflow-y-auto whitespace-pre-wrap leading-relaxed text-slate-800">
+                                    {renderHighlightedText()}
+                                </div>
                             </div>
+                            
+                            {/* Right Column: Controls and the Editable Text Area */}
                             <div className="space-y-6 flex flex-col">
                                 <div className="space-y-6">
                                     <div>
@@ -108,7 +152,19 @@ const StoryTextToSpeechPage: NextPage = () => {
                                         <ControlSlider id="rate" label="Speed" value={rate} min={0.5} max={2} step={0.1} onChange={(e) => setRate(parseFloat(e.target.value))} icon={<ChevronsRight size={16} />} />
                                         <ControlSlider id="pitch" label="Pitch" value={pitch} min={0} max={2} step={0.1} onChange={(e) => setPitch(parseFloat(e.target.value))} icon={<Zap size={16} />} />
                                     </div>
+                                    {/* THE UPGRADE: The editable textarea is now here */}
+                                    <div>
+                                        <label htmlFor="story-text" className="text-sm font-medium text-slate-700">Edit Your Story</label>
+                                        <textarea
+                                            id="story-text"
+                                            value={text}
+                                            onChange={(e) => setText(e.target.value)}
+                                            placeholder="Enter your story here..."
+                                            className="w-full h-[120px] p-3 mt-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 transition-shadow duration-200 resize-none text-slate-700 leading-relaxed bg-white"
+                                        />
+                                    </div>
                                 </div>
+                                
                                 <div className="pt-6 border-t border-slate-200 mt-auto">
                                     {!isSpeechReady && (
                                         <div className="flex items-center justify-center gap-2 p-3 text-slate-500">
@@ -117,7 +173,7 @@ const StoryTextToSpeechPage: NextPage = () => {
                                     )}
                                     <div className={`space-y-3 ${!isSpeechReady ? 'opacity-50 cursor-not-allowed' : ''}`}>
                                         <div className="flex items-center gap-3">
-                                            <button onClick={handleSpeak} disabled={!isSpeechReady || isSpeaking} className="flex-grow flex items-center justify-center gap-2 p-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 disabled:bg-blue-300 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none">
+                                            <button onClick={handleSpeak} disabled={!isSpeechReady || isSpeaking} className="flex-grow flex items-center justify-center gap-2 p-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 shadow-md hover:shadow-lg transform hover:-translate-y-0.S5 transition-all duration-200 disabled:bg-blue-300 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none">
                                                 {isPaused ? <><Play size={18} /> Resume</> : <><Play size={18} /> Speak</>}
                                             </button>
                                             <button onClick={handlePause} disabled={!isSpeechReady || !isSpeaking || isPaused} className="flex-shrink-0 flex items-center justify-center h-[48px] w-[48px] bg-slate-200 text-slate-700 font-semibold rounded-xl hover:bg-slate-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none">
