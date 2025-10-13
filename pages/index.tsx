@@ -1,9 +1,87 @@
-// Paste this entire block to replace your existing return statement
+import { useState, useEffect, useRef, type FC } from 'react';
+import type { NextPage } from 'next';
+import Head from 'next/head';
+import { Play, Pause, Square, Volume2, Languages, Zap, ChevronsRight } from 'lucide-react';
 
-return (
+// This helper component doesn't need to be changed
+const ControlSlider: FC<{ id: string; label: string; value: number; min: number; max: number; step: number; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; icon: React.ReactNode; }> = ({ id, label, value, min, max, step, onChange, icon }) => (
+  <div className="space-y-2">
+    <label htmlFor={id} className="flex items-center gap-2 text-sm font-medium text-slate-600">
+      {icon}
+      {label}
+      <span className="font-bold text-slate-800">{value.toFixed(1)}</span>
+    </label>
+    <input
+      id={id}
+      type="range"
+      min={min}
+      max={max}
+      step={step}
+      value={value}
+      onChange={onChange}
+      className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+    />
+  </div>
+);
+
+const StoryTextToSpeechPage: NextPage = () => {
+  const initialStory = `Story ka Perfect Ending aur Next Episode ka Connection\n\nThe End of Episode 1:\n\nFranklin un badmashon se bachkar nikal jaata hai aur us awesome supercar ko apne safe garage mein le aata hai. Woh bohot khush hai aur apni jeet ka jashn mana raha hai. Woh gaadi ke paas khada hokar uski beauty ko admire kar raha hota hai.\n\nThe TWIST (Jo Agle Episode ko Jodega):\n\nJab Franklin gaadi ke andar baithkar uske features check kar raha hota hai, toh usse glovebox (dashboard ka chota sa cabinet) ke andar se ek cheez milti hai... Ek Mysterious Pen Drive!`;
+
+  const [text, setText] = useState<string>(initialStory);
+  const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
+  const [isPaused, setIsPaused] = useState<boolean>(false);
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [selectedVoice, setSelectedVoice] = useState<SpeechSynthesisVoice | null>(null);
+  const [rate, setRate] = useState<number>(1);
+  const [pitch, setPitch] = useState<number>(1);
+
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  useEffect(() => {
+    const loadVoices = () => {
+      const availableVoices = window.speechSynthesis.getVoices();
+      if (availableVoices.length > 0) {
+        setVoices(availableVoices);
+        const hindiVoice = availableVoices.find(v => v.lang === 'hi-IN');
+        const indianEnglishVoice = availableVoices.find(v => v.lang === 'en-IN');
+        setSelectedVoice(hindiVoice || indianEnglishVoice || availableVoices[0]);
+      }
+    };
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+    loadVoices();
+    return () => {
+      window.speechSynthesis.onvoiceschanged = null;
+      window.speechSynthesis.cancel();
+    };
+  }, []);
+
+  const handleSpeak = () => {
+    if (isPaused) {
+      window.speechSynthesis.resume();
+      setIsPaused(false);
+      setIsSpeaking(true);
+      return;
+    }
+    if (text.trim() === '') return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.voice = selectedVoice;
+    utterance.rate = rate;
+    utterance.pitch = pitch;
+    utterance.onstart = () => { setIsSpeaking(true); setIsPaused(false); };
+    utterance.onend = () => { setIsSpeaking(false); setIsPaused(false); };
+    utterance.onerror = (event) => { console.error('SpeechSynthesisUtterance.onerror', event); setIsSpeaking(false); setIsPaused(false); };
+    utteranceRef.current = utterance;
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const handlePause = () => { window.speechSynthesis.pause(); setIsPaused(true); setIsSpeaking(false); };
+  const handleStop = () => { window.speechSynthesis.cancel(); setIsSpeaking(false); setIsPaused(false); };
+
+  return (
     <>
       <Head>
-        <title>Hindi Story Text to Speech</title>
+        <title>Story Text-to-Speech | Pro</title>
         <meta name="description" content="A text-to-speech tool for Hindi and Hinglish stories" />
         <link rel="icon" href="/favicon.ico" />
         {/* NEW - Adding the "Inter" font from Google Fonts */}
@@ -28,8 +106,9 @@ return (
             </div>
         </header>
 
-        {/* Your existing <main> tag, now centered within the new layout */}
+        {/* The main content area */}
         <main className="flex items-center justify-center p-4">
+          {/* NEW - The "Glass Card" effect for your app */}
           <div className="w-full max-w-3xl mx-auto bg-white/80 backdrop-blur-lg rounded-2xl shadow-xl border border-slate-200 p-6 md:p-8 mt-8">
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -61,62 +140,41 @@ return (
                     className="w-full p-3 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-shadow duration-200"
                     disabled={voices.length === 0}
                   >
-                    {voices.length > 0 ? (
-                      voices.map(voice => (
-                        <option key={voice.name} value={voice.name}>
-                          {voice.name} ({voice.lang})
-                        </option>
-                      ))
-                    ) : (
-                      <option>Loading voices...</option>
-                    )}
+                    {voices.length > 0 ? voices.map(voice => (
+                      <option key={voice.name} value={voice.name}>{voice.name} ({voice.lang})</option>
+                    )) : <option>Loading voices...</option>}
                   </select>
                 </div>
 
                 <div className="space-y-4">
                   <ControlSlider 
-                      id="rate"
-                      label="Speed"
-                      value={rate}
-                      min={0.5}
-                      max={2}
-                      step={0.1}
-                      onChange={(e) => setRate(parseFloat(e.target.value))}
-                      icon={<ChevronsRight size={16} />}
+                      id="rate" label="Speed" value={rate} min={0.5} max={2} step={0.1}
+                      onChange={(e) => setRate(parseFloat(e.target.value))} icon={<ChevronsRight size={16} />}
                   />
                   <ControlSlider 
-                      id="pitch"
-                      label="Pitch"
-                      value={pitch}
-                      min={0}
-                      max={2}
-                      step={0.1}
-                      onChange={(e) => setPitch(parseFloat(e.target.value))}
-                      icon={<Zap size={16} />}
+                      id="pitch" label="Pitch" value={pitch} min={0} max={2} step={0.1}
+                      onChange={(e) => setPitch(parseFloat(e.target.value))} icon={<Zap size={16} />}
                   />
                 </div>
 
                 <div className="pt-4 border-t border-slate-200">
                   <div className="grid grid-cols-3 gap-3">
                     <button
-                      onClick={handleSpeak}
-                      disabled={isSpeaking}
+                      onClick={handleSpeak} disabled={isSpeaking}
                       // NEW - More dynamic button classes
                       className="col-span-2 flex items-center justify-center gap-2 p-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 disabled:bg-indigo-300 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none"
                     >
                       {isPaused ? <><Play size={18} /> Resume</> : <><Play size={18} /> Speak</>}
                     </button>
                     <button
-                      onClick={handlePause}
-                      disabled={!isSpeaking || isPaused}
+                      onClick={handlePause} disabled={!isSpeaking || isPaused}
                       className="flex items-center justify-center p-3 bg-slate-200 text-slate-700 font-semibold rounded-xl hover:bg-slate-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none"
                     >
                       <Pause size={18} />
                     </button>
                   </div>
                   <button
-                      onClick={handleStop}
-                      disabled={!isSpeaking && !isPaused}
+                      onClick={handleStop} disabled={!isSpeaking && !isPaused}
                       // NEW - More dynamic button classes
                       className="w-full mt-3 flex items-center justify-center gap-2 p-3 bg-red-500 text-white font-semibold rounded-xl hover:bg-red-600 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 disabled:bg-red-200 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none"
                     >
@@ -127,6 +185,14 @@ return (
             </div>
           </div>
         </main>
+
+        {/* NEW - A professional footer */}
+        <footer className="text-center p-6 text-slate-500 text-sm">
+          <p>&copy; {new Date().getFullYear()} Story TTS. All rights reserved.</p>
+        </footer>
       </div>
     </>
   );
+};
+
+export default StoryTextToSpeechPage;
