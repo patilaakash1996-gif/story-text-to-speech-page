@@ -3,7 +3,7 @@ import type { NextPage } from 'next';
 import Head from 'next/head';
 import { Play, Pause, Square, Volume2, Languages, Zap, ChevronsRight, BookOpen } from 'lucide-react';
 
-// This helper component doesn't need to be changed
+// This helper component is fine
 const ControlSlider: FC<{ id: string; label: string; value: number; min: number; max: number; step: number; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; icon: React.ReactNode; }> = ({ id, label, value, min, max, step, onChange, icon }) => (
   <div className="space-y-2">
     <label htmlFor={id} className="flex items-center gap-2 text-sm font-medium text-slate-600">
@@ -34,28 +34,35 @@ const StoryTextToSpeechPage: NextPage = () => {
   const [selectedVoice, setSelectedVoice] = useState<SpeechSynthesisVoice | null>(null);
   const [rate, setRate] = useState<number>(1);
   const [pitch, setPitch] = useState<number>(1);
-
-  // NEW - State to store the character range of the currently spoken word
   const [currentWordRange, setCurrentWordRange] = useState<{ start: number, end: number }>({ start: 0, end: 0 });
 
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
+  // THIS useEffect BLOCK IS NOW FIXED
   useEffect(() => {
     const populateVoiceList = () => {
       const availableVoices = window.speechSynthesis.getVoices();
-      if (availableVoices.length > 0) {
-        setVoices(availableVoices);
-        if (!selectedVoice) {
-            const hindiVoice = availableVoices.find(v => v.lang === 'hi-IN');
-            const indianEnglishVoice = availableVoices.find(v => v.lang === 'en-IN');
-            setSelectedVoice(hindiVoice || indianEnglishVoice || availableVoices[0]);
-        }
+      
+      // THE FIX IS HERE: Check if voices exist before using them.
+      if (!availableVoices || availableVoices.length === 0) {
+        return;
+      }
+      
+      setVoices(availableVoices);
+
+      // Only set a default if one isn't already selected.
+      if (!selectedVoice) {
+          const hindiVoice = availableVoices.find(v => v.lang === 'hi-IN');
+          const indianEnglishVoice = availableVoices.find(v => v.lang === 'en-IN');
+          setSelectedVoice(hindiVoice || indianEnglishVoice || availableVoices[0]);
       }
     };
+
     window.speechSynthesis.onvoiceschanged = populateVoiceList;
     populateVoiceList();
+    
     return () => { window.speechSynthesis.onvoiceschanged = null; };
-  }, [selectedVoice]);
+  }, []); // Use an empty dependency array to run only once on mount.
 
   const handleSpeak = () => {
     if (voices.length === 0 || !selectedVoice) {
@@ -74,21 +81,13 @@ const StoryTextToSpeechPage: NextPage = () => {
     utterance.voice = selectedVoice;
     utterance.rate = rate;
     utterance.pitch = pitch;
-    
-    // NEW - Listen for word boundaries
     utterance.onboundary = (event) => {
       if (event.name === 'word') {
         setCurrentWordRange({ start: event.charIndex, end: event.charIndex + event.charLength });
       }
     };
-    
     utterance.onstart = () => { setIsSpeaking(true); setIsPaused(false); };
-    utterance.onend = () => {
-      setIsSpeaking(false);
-      setIsPaused(false);
-      // NEW - Reset highlighting when speech ends
-      setCurrentWordRange({ start: 0, end: 0 });
-    };
+    utterance.onend = () => { setIsSpeaking(false); setIsPaused(false); setCurrentWordRange({ start: 0, end: 0 }); };
     utterance.onerror = (event) => { console.error('SpeechSynthesisUtterance.onerror', event); setIsSpeaking(false); setIsPaused(false); };
     utteranceRef.current = utterance;
     window.speechSynthesis.speak(utterance);
@@ -100,15 +99,13 @@ const StoryTextToSpeechPage: NextPage = () => {
     window.speechSynthesis.cancel();
     setIsSpeaking(false);
     setIsPaused(false);
-    // NEW - Reset highlighting when speech is stopped
     setCurrentWordRange({ start: 0, end: 0 });
   };
 
-  // NEW - A helper function to render the highlighted text
   const renderHighlightedText = () => {
     const { start, end } = currentWordRange;
-    if (start === 0 && end === 0) {
-      return text; // No highlighting
+    if (start === 0 && end === 0 && !isSpeaking) {
+      return text;
     }
     return (
       <>
@@ -147,7 +144,6 @@ const StoryTextToSpeechPage: NextPage = () => {
           <div className="w-full max-w-3xl mx-auto bg-white/80 backdrop-blur-lg rounded-2xl shadow-xl border border-slate-200 p-6 md:p-8 mt-8">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               <div className="md:col-span-2 space-y-4">
-                {/* Text Area for editing */}
                 <label htmlFor="story-text" className="text-sm font-medium text-slate-700">Your Story (Editable)</label>
                 <textarea
                   id="story-text"
@@ -156,19 +152,13 @@ const StoryTextToSpeechPage: NextPage = () => {
                   placeholder="Enter your story here..."
                   className="w-full h-48 p-4 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 transition-shadow duration-200 resize-none text-slate-700 leading-relaxed bg-white"
                 />
-
-                {/* NEW - The Reader View with Highlighting */}
                 <div className="space-y-2">
-                  <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                    <BookOpen size={16} /> Reading View
-                  </label>
+                  <label className="flex items-center gap-2 text-sm font-medium text-slate-700"> <BookOpen size={16} /> Reading View </label>
                   <div className="w-full h-48 p-4 border border-slate-300 rounded-xl bg-gray-50 overflow-y-auto whitespace-pre-wrap leading-relaxed">
                     {renderHighlightedText()}
                   </div>
                 </div>
               </div>
-
-              {/* Right Column: Controls */}
               <div className="md:col-span-1 space-y-6">
                 <div>
                   <label htmlFor="voice-select" className="flex items-center gap-2 mb-2 text-sm font-medium text-slate-700"><Languages size={16} /> Voice / Language</label>
@@ -182,33 +172,22 @@ const StoryTextToSpeechPage: NextPage = () => {
                     {voices.length > 0 ? voices.map(voice => (<option key={voice.name} value={voice.name}>{voice.name} ({voice.lang})</option>)) : <option>Loading voices...</option>}
                   </select>
                 </div>
-
                 <div className="space-y-4">
                   <ControlSlider id="rate" label="Speed" value={rate} min={0.5} max={2} step={0.1} onChange={(e) => setRate(parseFloat(e.target.value))} icon={<ChevronsRight size={16} />} />
                   <ControlSlider id="pitch" label="Pitch" value={pitch} min={0} max={2} step={0.1} onChange={(e) => setPitch(parseFloat(e.target.value))} icon={<Zap size={16} />} />
                 </div>
-
                 <div className="pt-4 border-t border-slate-200">
                   <div className="grid grid-cols-3 gap-3">
-                    <button
-                      onClick={handleSpeak} disabled={isSpeaking}
-                      className="col-span-2 flex items-center justify-center gap-2 p-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 disabled:bg-indigo-300 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none"
-                    >
+                    <button onClick={handleSpeak} disabled={isSpeaking} className="col-span-2 flex items-center justify-center gap-2 p-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 disabled:bg-indigo-300 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none">
                       {isPaused ? <><Play size={18} /> Resume</> : <><Play size={18} /> Speak</>}
                     </button>
-                    <button
-                      onClick={handlePause} disabled={!isSpeaking || isPaused}
-                      className="flex items-center justify-center p-3 bg-slate-200 text-slate-700 font-semibold rounded-xl hover:bg-slate-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none"
-                    >
+                    <button onClick={handlePause} disabled={!isSpeaking || isPaused} className="flex items-center justify-center p-3 bg-slate-200 text-slate-700 font-semibold rounded-xl hover:bg-slate-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none">
                       <Pause size={18} />
                     </button>
                   </div>
-                  <button
-                      onClick={handleStop} disabled={!isSpeaking && !isPaused}
-                      className="w-full mt-3 flex items-center justify-center gap-2 p-3 bg-red-500 text-white font-semibold rounded-xl hover:bg-red-600 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 disabled:bg-red-200 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none"
-                    >
-                      <Square size={18} /> Stop
-                    </button>
+                  <button onClick={handleStop} disabled={!isSpeaking && !isPaused} className="w-full mt-3 flex items-center justify-center gap-2 p-3 bg-red-500 text-white font-semibold rounded-xl hover:bg-red-600 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 disabled:bg-red-200 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none">
+                    <Square size={18} /> Stop
+                  </button>
                 </div>
               </div>
             </div>
